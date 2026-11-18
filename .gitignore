@@ -1,0 +1,6 @@
+# Dataset (never commit)
+data/
+
+# OS
+.DS_Store
+Thumbs.db
