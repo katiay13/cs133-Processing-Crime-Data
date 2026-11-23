@@ -86,8 +86,8 @@ if ($3 ~ /^[0-9]+$/ && length($3) <= 4){      #  zero pad time
 	padded_time=$3
 	while (length(padded_time)<4) {
 		padded_time= "0"padded_time
-		}
-	if (padded_time ~ TIME_TARGET) {
+	}
+	if (padded_time ~ TIME_TARGET) {      #  validate time
 		time=padded_time
 	}
 }
@@ -142,7 +142,7 @@ fi
 } > "$LOG/02_clean.log" 2>> "$LOG/err.log"
 
 if [ "$RESULT" =  "PASS" ]; then     
-echo "Cleaning part 2 done. See $OUT"
+	echo "Cleaning part 2 done. See $OUT"
 else
 	echo "Error. See ${LOG}err.log"
 	exit 1
