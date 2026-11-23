@@ -14,7 +14,7 @@ RAW="$PROJECT_DIR/data/raw/crimes.csv"
 NOCR="$PROJECT_DIR/data/interim/crimes_no_cr.csv"
 WORK="$PROJECT_DIR/data/interim/work.csv"
 TEMP="$PROJECT_DIR/data/interim/temp.csv"
-OUT="$PROJECT_DIR/data/interim/crimes_unquoted.csv"
+OUT="$PROJECT_DIR/data/interim/01_unquoted_crimes.csv"
 
 LOG="$PROJECT_DIR/output/log/"      #  Log path
 
@@ -44,37 +44,36 @@ while grep -q "$TARGET," "$WORK"; do
 		echo "Loop did not finish after $MAX_PASSES passes" >&2
 		break
 	fi
-	sed -E "s/($TARGET),/\1|/g" "$WORK" > "$TEMP"      #  replace first comma inside double quotes with | (repeat until none left)
-	mv "$TEMP" "$WORK"      #  move temp to work for while loop validation
+sed -E "s/($TARGET),/\1|/g" "$WORK" > "$TEMP"      #  replace first comma inside double quotes with | (repeat until none left)
+mv "$TEMP" "$WORK"      #  move temp to work for while loop validation
 done
 
-sed 's/"//g' "$WORK" > "$OUT"      #  remove double quotes
+sed 's/"//g' "$WORK" > "$TEMP"      #  remove double quotes
+sed -E "s/(^|,)\'/\1/g" "$TEMP" > "$WORK"      #  removes leading single quotes
+cut -s -d',' -f1,3,4,6,10,17,18,19,20 "$WORK" > "$OUT"      #  keeps only needed fields
 
 HASQUOTES=$(grep -c '"' "$OUT" || true)
 echo "--- Lines Still Containing Quotes ---"
 echo "$HASQUOTES"
 NUMFIELDS=$(awk -F',' '{print NF}' "$OUT" | sort -u)
-echo "--- Distinct Field Counts (Want 28) ---"
+echo "--- Distinct Field Counts (Want 9) ---"
 awk -F',' '{print NF}' "$OUT" | sort | uniq -c
 
 echo; echo "--- Cleaning Validation ---"
-if [ "$HASQUOTES" -eq 0 ] && [ "$NUMFIELDS" -eq 28 ]; then      #  validate for no quotes and correct number of fields
+if [ "$HASQUOTES" -eq 0 ] && [ "$NUMFIELDS" -eq 9 ]; then      #  validate for no quotes and correct number of fields
 	echo "PASS"
 	rm -f "$NOCR" "$WORK" "$TEMP"
-	RESULT=PASS
+RESULT=PASS
 else
 	echo "FAIL: Quotes still contained in dataset or incorrect number of fields"
 	echo "FAIL: Quotes still contained in dataset or incorrect number of fields" >&2
 fi
+
 } > "$LOG/01_clean.log" 2>> "$LOG/err.log"
 
 if [ "$RESULT" =  "PASS" ]; then     
-	echo "Cleaning part 1 done. See $OUT"
+echo "Cleaning part 1 done. See $OUT"
 else
 	echo "Error. See ${LOG}err.log"
 	exit 1
 fi
-
-
-
-
