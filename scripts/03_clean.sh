@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-#  normalizes text fields and status codes, checks code/description pairs
+#  normalizes text fields, checks code/description pairs
+#  status is cleaned in 02_clean (CLEAN STATUS columns), this only checks it
 #  does not modify raw file
 
 set -euo pipefail # stops errors, unset vars, and failed pipes
@@ -18,7 +19,7 @@ OUT="$PROJECT_DIR/data/interim/03_clean_crimes.csv"
 
 LOG="$PROJECT_DIR/output/log/"      #  Log path
 
-HEADER="DR_NO,DATE OCC,TIME OCC,AREA NAME,Crm Cd Desc,Weapon Used Cd,Weapon Desc,Status,Status Desc,YEAR OCC,MONTH OCC,DAY OCC,CLEAN TIME OCC"
+HEADER="DR_NO,DATE OCC,TIME OCC,AREA NAME,Crm Cd Desc,Weapon Used Cd,Weapon Desc,Status,Status Desc,YEAR OCC,MONTH OCC,DAY OCC,CLEAN TIME OCC,CLEAN STATUS,CLEAN STATUS DESC"
 RESULT=FAIL
 
 mkdir -p "$LOG"
@@ -47,7 +48,7 @@ print "LINE", "FIELDS", "ROW" > REJECTED
 next
 }
 
-NF != 13 {      #  wrong field count means shifted columns, move row out
+NF != 15 {      #  wrong field count means shifted columns, move row out
 print NR, NF, $0 > REJECTED
 next
 }
@@ -65,19 +66,7 @@ for (i = 4; i <= 9; i++) {      #  trim and squeeze spaces in area, crime, weapo
 }
 if (spaces)      { issues=issues separator "SPACES_FIXED"; separator="|" }
 
-if ($8 != toupper($8)) {      #  status codes should be uppercase
-	$8=toupper($8)
-	issues=issues separator "STATUS_UPPERCASED"; separator="|"
-}
-if ($8 == "") {      #  blank status becomes unknown
-	issues=issues separator "STATUS_BLANK"; separator="|"
-	$8="UNK"; $9="Unknown"
-} else if ($8 == "CC") {      #  CC is not a documented code, also unknown
-	issues=issues separator "STATUS_CC"; separator="|"
-	$8="UNK"; $9="Unknown"
-} else if ($8 !~ /^(AA|AO|IC|JA|JO|UNK)$/) {      #  anything else gets flagged but kept
-	issues=issues separator "STATUS_UNEXPECTED"; separator="|"
-}
+if ($14 !~ /^(AA|AO|IC|JA|JO|CC|UNK)$/)      { issues=issues separator "STATUS_UNEXPECTED"; separator="|" }      #  clean status from 02_clean should only be these
 
 if (($6 == "") != ($7 == ""))      { issues=issues separator "WEAPON_MISMATCH"; separator="|" }      #  code and desc should both be blank or both filled
 if ($6 != "" && $6 !~ /^[0-9]+$/)      { issues=issues separator "WEAPON_CODE_NOT_NUMERIC"; separator="|" }
@@ -89,7 +78,7 @@ print $0
 } ' "$IN" > "$TEMP"
 
 NUMFIELDS=$(awk -F',' '{print NF}' "$TEMP" | sort -u)
-echo "--- Distinct Field Counts (Want 13) ---"
+echo "--- Distinct Field Counts (Want 15) ---"
 awk -F',' '{print NF}' "$TEMP" | sort | uniq -c
 
 echo; echo "--- Diagnostics ---"
@@ -103,27 +92,27 @@ echo "Rows removed for wrong field count: $ROWS_REJECTED"
 echo "Rows flagged (kept, see 03_flagged_rows_crimes.csv): $ROWS_FLAGGED"
 
 echo; echo "--- Issue Counts ---"
-for ISSUE in SPACES_FIXED STATUS_UPPERCASED STATUS_BLANK STATUS_CC STATUS_UNEXPECTED WEAPON_MISMATCH WEAPON_CODE_NOT_NUMERIC AREA_BLANK CRIME_DESC_BLANK; do
+for ISSUE in SPACES_FIXED STATUS_UNEXPECTED WEAPON_MISMATCH WEAPON_CODE_NOT_NUMERIC AREA_BLANK CRIME_DESC_BLANK; do
 	echo "$ISSUE: $(grep -c "$ISSUE" "$FLAGGED" || true)"
 done
 
 echo; echo "--- Rows with issues (DR_NO: Issues) ---"
 if [ "$ROWS_FLAGGED" -gt 0 ]; then
 	if [ "$ROWS_FLAGGED" -gt 10 ]; then
-		awk -F"," 'NR>1 {print $1": "$14}' "$FLAGGED" | head -10 || true
+		awk -F"," 'NR>1 {print $1": "$NF}' "$FLAGGED" | head -10 || true
 		echo "..."
 		echo "+$((ROWS_FLAGGED-10)) more"
 	else
-		awk -F"," 'NR>1 {print $1": "$14}' "$FLAGGED"
+		awk -F"," 'NR>1 {print $1": "$NF}' "$FLAGGED"
 	fi
 else
 	echo "No rows with issues"
 fi
 
-echo; echo "--- Status Codes (Count, Code, Description) ---"
-tail -n +2 "$TEMP" | cut -d',' -f8,9 | sort | uniq -c
-echo "--- Status Codes With More Than One Description (Want 0) ---"
-tail -n +2 "$TEMP" | cut -d',' -f8,9 | sort -u | cut -d',' -f1 | uniq -d | wc -l
+echo; echo "--- Clean Status Codes From 02_clean (Count, Code, Description) ---"
+tail -n +2 "$TEMP" | cut -d',' -f14,15 | sort | uniq -c
+echo "--- Clean Status Codes With More Than One Description (Want 0) ---"
+tail -n +2 "$TEMP" | cut -d',' -f14,15 | sort -u | cut -d',' -f1 | uniq -d | wc -l
 
 echo; echo "--- Distinct Weapon Codes ---"
 awk -F',' 'NR>1 && $6 != "" {print $6}' "$TEMP" | sort -u | wc -l
@@ -141,7 +130,7 @@ echo "--- Crime Descriptions Containing | (commas replaced in 01_clean) ---"
 awk -F',' 'NR>1 && $5 ~ /\|/' "$TEMP" | wc -l
 
 echo; echo "--- Cleaning Validation ---"
-if [ "$NUMFIELDS" -eq 13 ] && [ $((ROWS_OUT + ROWS_REJECTED)) -eq "$ROWS_IN" ]; then      #  13 fields and no rows lost
+if [ "$NUMFIELDS" -eq 15 ] && [ $((ROWS_OUT + ROWS_REJECTED)) -eq "$ROWS_IN" ]; then      #  15 fields and no rows lost
 	echo "PASS"
 	mv "$TEMP" "$OUT"
 	RESULT=PASS
