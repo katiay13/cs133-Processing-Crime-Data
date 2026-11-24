@@ -1,0 +1,10 @@
+--- Distinct Field Counts (Want 13) ---
+1004895 13
+PASS
+
+--- Diagnostics ---
+Total rows: 1004894
+Rows with an unknown date or time: 0
+
+--- Rows with issues (DR_NO: Issues)---
+No rows with unknown date/time

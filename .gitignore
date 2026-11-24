@@ -4,3 +4,5 @@ data/
 # OS
 .DS_Store
 Thumbs.db
+
+output/log/err.log
