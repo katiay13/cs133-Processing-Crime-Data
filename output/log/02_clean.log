@@ -1,10 +1,16 @@
---- Distinct Field Counts (Want 13) ---
-1004895 13
+--- Distinct Field Counts (Want 15) ---
+1004895 15
 PASS
 
 --- Diagnostics ---
 Total rows: 1004894
-Rows with an unknown date or time: 0
+Rows with an unknown date, time, or status: 7
 
 --- Rows with issues (DR_NO: Issues)---
-No rows with unknown date/time
+220125552: STATUS_UNKNOWN
+220126119: STATUS_UNKNOWN
+231311708: STATUS_UNKNOWN
+230708724: STATUS_UNKNOWN
+230915357: STATUS_UNKNOWN
+241810568: STATUS_UNKNOWN
+240206384: STATUS_UNKNOWN
