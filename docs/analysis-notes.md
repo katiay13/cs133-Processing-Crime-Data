@@ -1,63 +1,133 @@
-# CS 131, Eric's initial crime analysis stage
+# Eric's CS 131 crime analysis (2020-2023)
 
-## What this work adds
+## Integration status (updated after comparing all five branch ZIPs)
 
-`analyze.sh` is an independent first-pass analysis of the 2020-2023 subset of LAPD crime data. It operates on the **13-column cleaned file** written by Frank's `scripts/02_clean.sh`, not on the raw instructor-provided CSV.
+This is Eric's analysis contribution. Run it on the normalized **15-column** file
+produced by Kenny's `scripts/03_clean.sh`, after Frank's `scripts/01_clean.sh`
+and `scripts/02_clean.sh`:
 
-Default input: `data/interim/02_clean_crimes.csv`
+```text
+data/raw/crimes.csv
+  -> bash scripts/01_clean.sh  -> data/interim/01_unquoted_crimes.csv
+  -> bash scripts/02_clean.sh  -> data/interim/02_clean_crimes.csv
+  -> bash scripts/03_clean.sh  -> data/interim/03_clean_crimes.csv
+  -> bash analyze.sh           -> output/analysis/*.tsv
+```
 
-Default output folder: `output/analysis/`
+The `03_clean.sh` file is on Kenny's branch in the provided snapshots. Do not
+copy teammates' scripts into your branch without coordinating the merge. For
+now, the analysis tests run independently using a synthetic 15-column fixture.
 
-Outputs:
-- `yearly.tsv`: annual count and percentage change from preceding year
-- `monthly.tsv`: total for each calendar month across 2020-2023 (not a monthly time series)
-- `hourly.tsv`: total for each local reported hour across 2020-2023
-- `top_areas.tsv`: top 10 LAPD police-area names by record count
-- `top_crime_types.tsv`: top 10 reported offense descriptions by count
-- `summary.tsv`: analysis denominators and excluded/missing-value counts
-- `run_log.tsv`: input and malformed row totals
-- `rejected_rows.tsv`: line numbers/IDs for records with an unexpected number of fields
+### Exact input contract
 
-## Data decisions and limits
+| # | Column | Used for |
+|---|---|---|
+| 1 | DR_NO | audit of unusually formatted IDs |
+| 2 | DATE OCC | preserved source occurrence date |
+| 3 | TIME OCC | preserved original time |
+| 4 | AREA NAME | police-area comparisons |
+| 5 | Crm Cd Desc | top offense types |
+| 6 | Weapon Used Cd | code-present proxy |
+| 7 | Weapon Desc | inconsistency audit |
+| 8 | Status | preserved source status |
+| 9 | Status Desc | preserved source description |
+| 10 | YEAR OCC | 2020-2023 filter |
+| 11 | MONTH OCC | calendar month and timeline |
+| 12 | DAY OCC | preserved normalized day |
+| 13 | CLEAN TIME OCC | HHMM hour of occurrence |
+| 14 | CLEAN STATUS | AA/JA arrest counts |
+| 15 | CLEAN STATUS DESC | preserved normalized status description |
 
-- Analyze occurrences in 2020-2023, not report dates. 2024 is excluded from this analysis deliberately.
-- Count one *record* as one reported crime-data record. This is not a claim that every event has one unique victim or offense.
-- An unknown month or hour excludes the record only from the corresponding monthly or hourly report. A known year can still contribute to the annual total.
-- The area's name represents an LAPD policing area, not necessarily a city neighborhood.
-- Raw quoted CSV is **not** supported as input. Frank's cleaning stage is responsible for delivering comma-safe, one-line records without embedded commas. The fact that Frank replaced commas within quoted fields with `|` should be documented and reviewed for fidelity.
-- No deduplication is applied here. Duplicate `DR_NO` validation should be agreed upon with the inspection/cleaning teammates.
-- Counts are descriptive and not adjusted for resident population, reporting frequency, or the unequal sizes of policing areas.
-- No claims about causes of crime trends, true danger, or solved crimes follow from these counts alone.
+The script rejects a different header or an unreadable input. Rows with a
+non-15 field count are counted in `rejected_rows.tsv` and omitted from analysis;
+all other rows are passed through, with unknown values counted separately.
 
-## Run locally (WSL/Linux Bash)
+### Generated files
+
+| File | Purpose |
+|---|---|
+| `yearly.tsv` | 2020-2023 counts and year-over-year percentage changes |
+| `monthly.tsv` | Jan-Dec counts aggregated across all four years |
+| `year_month.tsv` | 48 chronological year-month counts for finding actual monthly peaks |
+| `hourly.tsv` | Occurrence counts by 24-hour time (unknown times excluded) |
+| `top_areas.tsv` | 10 LAPD areas with the most reported records |
+| `top_crime_types.tsv` | 10 most frequent offense descriptions |
+| `area_metrics.tsv` | Area counts, weapon-code presence and AA/JA arrest percentages |
+| `top_area_peak_hours.tsv` | Most frequent valid occurrence hour in each top-ten area |
+| `status_counts.tsv` | Records per normalized status code |
+| `summary.tsv` | Included/excluded row counts and quality diagnostics |
+| `rejected_rows.tsv` | Source line numbers of structurally malformed 15-column rows |
+| `run_log.tsv` | Source path, input/rejected totals and assumptions |
+
+### Important interpretation rules
+
+- Study occurrence years **2020 through 2023**, not report dates. 2024 is
+  deliberately excluded from the analysis.
+- Annual area counts represent *reported crime records*, not unique incidents
+  proven after deduplication. These are not population-adjusted risk rates.
+- `CLEAN STATUS` values `AA` and `JA` indicate **adult arrest** and **juvenile
+  arrest** respectively. This is an *arrest-recorded proportion*, not a solved
+  case or conviction rate. `AO`, `IC`, `JO` are known non-arrest statuses.
+  `CC` is the unknown fallback from the provided `02_clean.sh`; `UNK` is also
+  treated as unknown. `area_metrics.tsv` reports percent of **all** area rows
+  and, separately, percent among **known-status** area rows.
+- `Weapon Used Cd` nonblank is only **weapon-code presence**. It may include
+  bodily force or classifications that are not a physical weapon. Conversely,
+  a blank code is not evidence that no weapon was involved. We do not label
+  this a verified weapon-involvement or danger rate.
+- Missing month and time exclude a record only from that particular breakdown,
+  while a valid year still contributes to the annual count.
+- A police area is not the same as a neighborhood. Raw frequency is influenced
+  by area size, policing, and reporting. No causal inference is warranted.
+- Tied area/crime totals sort alphabetically. Tied peak hours select the
+  earliest hour. Status unknown rows are retained in overall totals.
+- Commas inside quoted fields were converted to `|` by the upstream cleaning
+  script. This `awk -F,` analysis therefore **must not** read the original
+  28-column quoted CSV.
+
+### Outstanding integration question: duplicates and DR_NO
+
+Katia's latest uploaded inspection log reports **2,965 extra rows** that are
+identical across all raw columns except `DR_NO`, across 2,357 groups, plus
+**five** four-digit `DR_NO` values. These figures are inspection findings,
+not evidence that all duplicates are erroneous. The group discussed rejecting
+them, but the uploaded `01_clean.sh`, `02_clean.sh` and `03_clean.sh` do not
+implement this deduplication or ID rejection. In particular, `03_clean.sh`
+rejects only incorrect field-count rows, and *flags* (keeps) other anomalies.
+
+**Do not remove rows again inside `analyze.sh`.** Coordinate with the cleaning
+team to apply any agreed rule upstream on the original full-width records,
+*before dropping fields*, with a rejected-rows file and documented rationale.
+Dropping duplicates after the initial 9-column selection could mistakenly
+collapse distinct incidents sharing only those selected attributes. When
+upstream cleaning changes, rerun these summaries and reconcile counts.
+
+## Run and test in VS Code Ubuntu/WSL
 
 From the repository root:
 
 ```bash
-bash analyze.sh
 bash tests/test_analyze.sh
+bash analyze.sh
+ls -lh output/analysis/
+column -t -s $'\t' output/analysis/top_areas.tsv
+column -t -s $'\t' output/analysis/area_metrics.tsv
 ```
 
-To test the sample without the full dataset:
+To run on any already-produced 15-column normalized file:
 
 ```bash
-bash analyze.sh tests/fixtures/clean_crimes_sample.csv output/analysis-sample
+bash analyze.sh /path/to/03_clean_crimes.csv /path/to/output/analysis
 ```
 
-Optional input and output paths:
+The automated tests use entirely **synthetic data**. They do not validate
+actual LA crime totals. Before final report submission, run the complete
+teammate cleaning sequence on the *instructor-provided modified CSV*, inspect
+all cleaning logs, and reconcile actual input, retained, and rejected counts.
 
-```bash
-bash analyze.sh /path/to/02_clean_crimes.csv /path/to/reports
-```
+## Course tools used
 
-## Class tools exercised
-
-Bash `set -euo pipefail`, command arguments, checking file readability, stderr errors, safe temporary directory with `mktemp` and `trap`, `awk` field selection/conditions/arrays/`END`, `sort` numeric keys, `head`, `wc` concepts, output redirection and deterministic report creation.
-
-## Integration to check with the team
-
-1. Frank must confirm that the cleaned file continues to have these 13 exact columns.
-2. All `.sh` files should use LF, not Windows CRLF, line endings.
-3. The master `run.sh` (another teammate's responsibility) should call `analyze.sh` only after successful cleaning.
-4. The instructor's altered dataset must be the final analysis input. Do not substitute the public portal file for grading.
-5. Compare final yearly counts to an independent calculation on the cleaned dataset.
+Bash `set -euo pipefail`, parameter defaults, input/schema checks, exit codes,
+stdout/stderr, `mktemp` and `trap`, `awk` conditions and grouped arrays, `sort`
+numeric ranking, pipelines, TSV output redirection, `diff` regression tests,
+and rerunnable deterministic reports.
